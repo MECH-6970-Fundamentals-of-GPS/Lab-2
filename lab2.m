@@ -11,7 +11,11 @@ time = data.GPS_time.seconds;
 for i = 1:length(time)
     % Calculate current SV states
     [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem, psrL1(i,:), time(i));
-    sv_amt = 
-    svPosLLA(:,:,i) = ecef2lla(svPos(:,:,i));
+    sv_amt = length(svPos);
+    svPosECEF(1:sv_amt,:,i) = svPos;
+    svPosLLA(1:sv_amt,:,i) = ecef2lla(svPosECEF(1:sv_amt,:,i));
+    geoplot(svPosLLA(1:sv_amt,1,i),svPosLLA(1:sv_amt,2,i),'bsquare')
+    hold on
 end
-
+figure(1)
+title('Sky Plot')
