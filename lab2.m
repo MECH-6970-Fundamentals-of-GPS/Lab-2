@@ -20,7 +20,7 @@ X0 = [0 0 0 0];
 
 for i = 1:length(time)
     % Part A: Calculate the sv pos as a function of GPS time
-    [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem, psrL1(i,:), time(i));
+    [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem(:,i), psrL1(i,:), time(i));
 
     % Part B: Calculate User Position
     rho = psrL1(i, svPrns)' + c*svB;
@@ -51,8 +51,3 @@ geobasemap satellite
 % % Part E: Calculate and find User Velocity in ENU
 % % Note: ECEF Velocity states computed in gpsPosVel function
 % [uVelE,uVelN,uVelU] = ecef2enu(Xu(:,4),Xu(:,5),Xu(:,6),toomersLLA(1),toomersLLA(2),toomersLLA(3),wgs);
-
-
-
-
-

@@ -19,7 +19,7 @@ function [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem, psr, t)
     
     % FUNCTION VARIABLES
     prnList = 1:32;                             % List of all SV PRNs
-    svPrns = prnList(~isnan(psr(1:32)));        % List of currently visible SV PRNs
+    svPrns = prnList(~isnan(psr(1:length(psr))));        % List of currently visible SV PRNs
     N = length(svPrns);                         % Number of currently visible SVs
     svPos = zeros(N,3);                         % SV Positions [m]
     svVel = zeros(N,3);                         % SV Velocities [m/s]
