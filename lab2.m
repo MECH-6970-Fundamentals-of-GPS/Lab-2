@@ -4,6 +4,7 @@ clear; close all; clc;
 % Constants
 c = physconst('LightSpeed');
 fL1 = 1575.42e6;
+fL2 = 1227.60e6;
 filename = 'RCVR_S1_data.mat';
 toomersLLA = [32.606389, -85.481667, 214.65];
 C = ECEF_ENU(toomersLLA(1), toomersLLA(2));
@@ -16,6 +17,7 @@ ephem = data.ephem;
 psrL1 = data.measurements.L1.psr;
 dopL1 = data.measurements.L1.doppler;
 psrL2 = data.measurements.L2.psr;
+dopL2 = data.measurements.L2.doppler;
 time = data.GPS_time.seconds;
 
 X0 = zeros(8,1);
@@ -24,74 +26,99 @@ XuIF = zeros(length(X0),length(time));
 [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem, psrL1(1,:), time(1));
 Xs = [svPos svB svVel svD];
 rhoL1 = psrL1(1, svPrns)' + c*svB;
-psr = (psrL2(1,:) - gamma*psrL1(1,:))./(1-gamma);
-rhoIF = psr(svPrns)' + c*svB;
-rho_dot = (-c/fL1)*dopL1(1, svPrns)' + c*svD;
-XuL1(:,1) = gnssPVT(Xs, X0, rhoL1', rho_dot');
-XuIF(:,1) = gnssPVT(Xs, X0, rhoIF', rho_dot');
+rhoL2 = psrL2(1, svPrns)' + c*svB;
+rhoIF = (rhoL2 - gamma*rhoL1)./(1-gamma);
+rho_dotL1 = (-c/fL1)*dopL1(1, svPrns)' + c*svD;
+XuL1(:,1) = gnssPVT(Xs, X0, rhoL1', rho_dotL1');
+XuIF(:,1) = gnssPVT(Xs(~isnan(rhoIF),:), X0, rhoIF(~isnan(rhoIF))', rho_dotL1(~isnan(rhoIF))');
 for i = 2:length(time)
     [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem, psrL1(i,:), time(i));
     Xs = [svPos svB svVel svD];
     rhoL1 = psrL1(i, svPrns)' + c*svB;
-    psr = (psrL2(i,:) - gamma*psrL1(i,:))./(1-gamma);
-    rhoIF = psr(svPrns)' + c*svB;
-    rho_dot = (-c/fL1)*dopL1(i, svPrns)' + c*svD;
-    [XuL1(:,i), HL1] = gnssPVT(Xs, XuL1(:,i-1), rhoL1', rho_dot');
-    [XuIF(:,i), HIF] = gnssPVT(Xs, XuIF(:,i-1), rhoIF', rho_dot');
+    rhoL2 = psrL2(i, svPrns)' + c*svB;
+    rhoIF = (rhoL2 - gamma*rhoL1)./(1-gamma);
+    rho_dotL1 = (-c/fL1)*dopL1(i, svPrns)' + c*svD;
+    [XuL1(:,i), HL1] = gnssPVT(Xs, XuL1(:,i-1), rhoL1', rho_dotL1');
+    [XuIF(:,i), HIF] = gnssPVT(Xs(~isnan(rhoIF),:), XuIF(:,i-1), rhoIF(~isnan(rhoIF))', rho_dotL1(~isnan(rhoIF))');
     uPosLLA = ecef2lla(XuL1(1:3,:)');
+    uPosLLAIF = ecef2lla(XuIF(1:3,:)');
     DOP(i) = gpsStats(HL1, uPosLLA(1), uPosLLA(2));
+    DOPIF(i) = gpsStats(HIF, uPosLLAIF(1), uPosLLAIF(2));
 end
 
 uPosLLA = ecef2lla(XuL1(1:3,:)');
-figure()
-geoplot(uPosLLA(:,1),uPosLLA(:,2),'.')
+uPosLLAIF = ecef2lla(XuIF(1:3,:)');
+
+figure();
+geoplot(uPosLLA(:,1),uPosLLA(:,2),'o','MarkerSize',5);
+hold('on');
+geoplot(uPosLLAIF(:,1),uPosLLAIF(:,2),'o','MarkerSize',5);
 geobasemap satellite
 
 ENU = C*XuL1(1:3,:);
+ENUIF = C*XuIF(1:3,:);
 ENU_vel = C*XuL1(5:7,:);
+ENU_velIF = C*XuIF(5:7,:);
 pos_std = std(ENU,0,2);
+pos_stdIF = std(ENUIF,0,2);
 vel_std = std(ENU_vel,0,2);
+vel_stdIF = std(ENU_velIF,0,2);
 
 fprintf('Position Accuracy(in ENU): [%0.3g %0.3g %0.3g]m\n', pos_std);
 fprintf('Velocity Accuracy(in ENU): [%0.3g %0.3g %0.3g]m\n', vel_std);
 
-figure();
-tiledlayout(3,1);
-nexttile();
-plot(time, ENU(1,:));
-ylabel('East (m)');
-ax = gca;
-ax.FontSize = 16;
-nexttile();
-plot(time, ENU(2,:));
-ylabel('North (m)');
-ax = gca;
-ax.FontSize = 16;
-nexttile();
-plot(time, ENU(3,:));
-xlabel('Time (s)');
-ylabel('Up (m)');
-ax = gca;
-ax.FontSize = 16;
+fprintf('Position Accuracy w/ no Iono(in ENU): [%0.3g %0.3g %0.3g]m\n', pos_stdIF);
+fprintf('Velocity Accuracy w/ no Iono(in ENU): [%0.3g %0.3g %0.3g]m\n', vel_stdIF);
 
 figure();
 tiledlayout(3,1);
 nexttile();
-plot(time, ENU_vel(1,:));
+hold('on');
+plot(time, ENU(1,:), 'LineWidth', 2);
+plot(time, ENUIF(1,:), 'LineWidth', 2);
+ylabel('East (m)');
+legend('L1 Only', 'L1/L2 Iono Correction');
+ax = gca;
+ax.FontSize = 18;
+nexttile();
+hold('on');
+plot(time, ENU(2,:), 'LineWidth', 2);
+plot(time, ENUIF(2,:), 'LineWidth', 2);
+ylabel('North (m)');
+legend('L1 Only', 'L1/L2 Iono Correction');
+ax = gca;
+ax.FontSize = 18;
+nexttile();
+hold('on');
+plot(time, ENU(3,:), 'LineWidth', 2);
+plot(time, ENUIF(3,:), 'LineWidth', 2);
+xlabel('Time (s)');
+ylabel('Up (m)');
+legend('L1 Only', 'L1/L2 Iono Correction');
+ax = gca;
+ax.FontSize = 18;
+
+figure();
+tiledlayout(3,1);
+nexttile();
+hold('on');
+plot(time, ENU_vel(1,:), 'LineWidth', 2);
 ylabel('East (m)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 nexttile();
-plot(time, ENU_vel(2,:));
+hold('on');
+plot(time, ENU_vel(2,:), 'LineWidth', 2);
 ylabel('North (m)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 nexttile();
-plot(time, ENU_vel(3,:));
+hold('on');
+plot(time, ENU_vel(3,:), 'LineWidth', 2);
 xlabel('Time (s)');
 ylabel('Up (m)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 
 %% PART II
 clear; clc;
@@ -120,27 +147,31 @@ XuIF = zeros(length(X0),length(time));
 [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem, psrL1(1,:), time(1));
 Xs = [svPos svB svVel svD];
 rhoL1 = psrL1(1, svPrns)' + c*svB;
-psr = (psrL2(1,:) - gamma*psrL1(1,:))./(1-gamma);
-rhoIF = psr(svPrns)' + c*svB;
-rho_dot = (-c/fL1)*dopL1(1, svPrns)' + c*svD;
-XuL1(:,1) = gnssPVT(Xs, X0, rhoL1', rho_dot');
-XuIF(:,1) = gnssPVT(Xs, X0, rhoIF', rho_dot');
+rhoL2 = psrL2(1, svPrns)' + c*svB;
+rhoIF = (rhoL2 - gamma*rhoL1)./(1-gamma);
+rho_dotL1 = (-c/fL1)*dopL1(1, svPrns)' + c*svD;
+XuL1(:,1) = gnssPVT(Xs, X0, rhoL1', rho_dotL1');
+XuIF(:,1) = gnssPVT(Xs(~isnan(rhoIF),:), X0, rhoIF(~isnan(rhoIF))', rho_dotL1(~isnan(rhoIF))');
 for i = 2:length(time)
     [svPos, svVel, svB, svD, svPrns] = sv_positions(ephem, psrL1(i,:), time(i));
     Xs = [svPos svB svVel svD];
     rhoL1 = psrL1(i, svPrns)' + c*svB;
-    psr = (psrL2(i,:) - gamma*psrL1(i,:))./(1-gamma);
-    rhoIF = psr(svPrns)' + c*svB;
-    rho_dot = (-c/fL1)*dopL1(i, svPrns)' + c*svD;
-    [XuL1(:,i), HL1] = gnssPVT(Xs, XuL1(:,i-1), rhoL1', rho_dot');
-    [XuIF(:,i), HIF] = gnssPVT(Xs, XuIF(:,i-1), rhoIF', rho_dot');
+    rhoL2 = psrL2(i, svPrns)' + c*svB;
+    rhoIF = (rhoL2 - gamma*rhoL1)./(1-gamma);
+    rho_dotL1 = (-c/fL1)*dopL1(i, svPrns)' + c*svD;
+    [XuL1(:,i), HL1] = gnssPVT(Xs, XuL1(:,i-1), rhoL1', rho_dotL1');
+    [XuIF(:,i), HIF] = gnssPVT(Xs(~isnan(rhoIF),:), XuIF(:,i-1), rhoIF(~isnan(rhoIF))', rho_dotL1(~isnan(rhoIF))');
     uPosLLA = ecef2lla(XuL1(1:3,:)');
+    uPosLLAIF = ecef2lla(XuIF(1:3,:)');
     DOP(i) = gpsStats(HL1, uPosLLA(1), uPosLLA(2));
+    DOPIF(i) = gpsStats(HIF, uPosLLAIF(1), uPosLLAIF(2));
 end
 
 uPosLLA = ecef2lla(XuL1(1:3,:)');
-figure()
-geoplot(uPosLLA(:,1),uPosLLA(:,2),'.')
+uPosLLAIF = ecef2lla(XuIF(1:3,:)');
+
+figure();
+geoplot(uPosLLA(:,1),uPosLLA(:,2),'rx','MarkerSize',5);
 geobasemap satellite
 
 vel = C*XuL1(5:7,:);
