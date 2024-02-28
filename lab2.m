@@ -6,7 +6,10 @@ c = physconst('LightSpeed');
 fL1 = 1575.42e6;
 filename = 'RCVR_S1_data.mat';
 toomersLLA = [32.606389, -85.481667, 214.65];
-C = ECEF_ENU(toomersLLA(1), toomersLLA(2));
+truthECEF = [422596.629, -5362864.287, 3415493.797];
+truthLLA = ecef2lla(truthECEF);
+Ctoomers = ECEF_ENU(toomersLLA(1), toomersLLA(2));
+Ctruth = ECEF_ENU(truthLLA(1), truthLLA(2));
 gamma = (77/60)^2;
 
 % Load Data
@@ -44,73 +47,97 @@ end
 
 uPosLLA = ecef2lla(XuL1(1:3,:)');
 figure()
-geoplot(uPosLLA(:,1),uPosLLA(:,2),'.')
+geoplot(uPosLLA(:,1),uPosLLA(:,2),'*','LineWidth',3)
+hold on;
+title('Static Data Set')
+geoplot(truthLLA(1), truthLLA(2),'rx','LineWidth',5,'MarkerSize',25);
 geobasemap satellite
+legend('L1 Only Estimate', 'Truth')
+ax = gca;
+ax.FontSize = 18;
 
-ENU = C*XuL1(1:3,:);
-ENU_vel = C*XuL1(5:7,:);
+ENU = Ctoomers*XuL1(1:3,:);
+errorENU = Ctruth*(XuL1(1:3,:));
+ENU_vel = Ctoomers*XuL1(5:7,:);
 pos_std = std(ENU,0,2);
 vel_std = std(ENU_vel,0,2);
+time_std = std(XuL1(4,:));
 
 fprintf('Position Accuracy(in ENU): [%0.3g %0.3g %0.3g]m\n', pos_std);
 fprintf('Velocity Accuracy(in ENU): [%0.3g %0.3g %0.3g]m\n', vel_std);
 
 figure();
-tiledlayout(3,1);
-nexttile();
-plot(time, ENU(1,:));
-ylabel('East (m)');
-ax = gca;
-ax.FontSize = 16;
-nexttile();
-plot(time, ENU(2,:));
-ylabel('North (m)');
-ax = gca;
-ax.FontSize = 16;
-nexttile();
-plot(time, ENU(3,:));
+plot(time, vecnorm(errorENU), '-x', 'LineWidth',3);
 xlabel('Time (s)');
-ylabel('Up (m)');
+ylabel('Error Magnitude (m)');
+title('ENU Error Magnitude v. Time');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 
 figure();
 tiledlayout(3,1);
 nexttile();
-plot(time, ENU_vel(1,:));
+plot(time, ENU(1,:),'-x');
+title('ENU Velocity v. Time');
+subtitle('Origin at Toomers Corner, Auburn, AL');
 ylabel('East (m)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 nexttile();
-plot(time, ENU_vel(2,:));
+plot(time, ENU(2,:),'-x');
 ylabel('North (m)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 nexttile();
-plot(time, ENU_vel(3,:));
+plot(time, ENU(3,:),'-x');
 xlabel('Time (s)');
 ylabel('Up (m)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
+
+figure();
+tiledlayout(3,1);
+nexttile();
+plot(time, ENU_vel(1,:),'-x');
+title('ENU Velocity v. Time');
+subtitle('Origin at Toomers Corner, Auburn, AL');
+ylabel('East (m)');
+ax = gca;
+ax.FontSize = 18;
+nexttile();
+plot(time, ENU_vel(2,:),'-x');
+ylabel('North (m)');
+ax = gca;
+ax.FontSize = 18;
+nexttile();
+plot(time, ENU_vel(3,:),'-x');
+xlabel('Time (s)');
+ylabel('Up (m)');
+ax = gca;
+ax.FontSize = 18;
 
 %% PART II
-clear; clc;
+clear;
 
 % Constants
 c = physconst('LightSpeed');
 fL1 = 1575.42e6;
 filename = 'RCVR_D1_data.mat';
 toomersLLA = [32.606389, -85.481667, 214.65];
-C = ECEF_ENU(toomersLLA(1), toomersLLA(2));
+Ctoomers = ECEF_ENU(toomersLLA(1), toomersLLA(2));
 gamma = (77/60)^2;
 
 % Load Data
 addpath(genpath("./"));
 data = load(filename).RCVR_D1;
+
+truthLLA = [data.true_pos.lat;data.true_pos.lon;data.true_pos.alt]';
+
 ephem = data.ephem;
 psrL1 = data.measurements.L1.psr;
 dopL1 = data.measurements.L1.doppler;
-psrL2 = data.measurements.L2.psr;
+psrVarL1 = data.measurements.L1.psr_variance;
+psrL2 = data.measurements.L2.psr;   
 dopL2 = data.measurements.L2.doppler;
 time = data.GPS_time.seconds;
 
@@ -135,51 +162,69 @@ for i = 2:length(time)
     [XuL1(:,i), HL1] = gnssPVT(Xs, XuL1(:,i-1), rhoL1', rho_dot');
     [XuIF(:,i), HIF] = gnssPVT(Xs, XuIF(:,i-1), rhoIF', rho_dot');
     uPosLLA = ecef2lla(XuL1(1:3,:)');
+
     DOP(i) = gpsStats(HL1, uPosLLA(1), uPosLLA(2));
+
+    P_psr = diag(psrVarL1(i,svPrns))';
+    P_pvt = HL1'*P_psr*HL1;
+    p_error(i) = sqrt(sum(diag(P_pvt(1:3,1:3))));
 end
 
 uPosLLA = ecef2lla(XuL1(1:3,:)');
 figure()
-geoplot(uPosLLA(:,1),uPosLLA(:,2),'.')
+geoplot(truthLLA(:,1),truthLLA(:,2),'x','LineWidth',2,'MarkerSize',10);
+hold('on');
+geoplot(uPosLLA(:,1),uPosLLA(:,2),'*','LineWidth',2,'MarkerSize',10);
 geobasemap satellite
+legend('Truth','L1 Only')
+ax = gca;
+ax.FontSize = 18;
 
-vel = C*XuL1(5:7,:);
+vel = Ctoomers*XuL1(5:7,:);
 course = atan2(vel(1,:), vel(2,:));
 avg_velocity = mean(vecnorm(vel));
 
 fprintf('The average speed of the moving platform: %0.3g m/s\n', avg_velocity);
 
 figure();
-plot(time, vecnorm(vel));
+plot(time, p_error,'-x','MarkerSize',10);
+xlabel('Time (s)');
+ylabel('Position Error (m)');
+title('Position Error Estimate vs. Time');
+ax = gca;
+ax.FontSize = 18;
+
+figure();
+plot(time, vecnorm(vel),'-x');
 title('Velocity vs. Time');
 xlabel('Time (s)');
 ylabel('Velocity m/s');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 
 figure();
-plot(course);
+plot(course,'-x');
 title('GPS Course v. Time');
 xlabel('Time (s)');
 ylabel('Course(radians)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 
 figure();
-plot(XuL1(4,:));
+plot(XuL1(4,:),'-x');
 title('Clock Bias vs. Time');
 xlabel('Time (s)');
 ylabel('Receiver Clock Bias (m)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 
 figure();
-plot(XuL1(8,:));
+plot(XuL1(8,:),'-x');
 title('Clock Drift vs. Time');
 xlabel('Time (s)');
 ylabel('Receiver Clock Drift (m/s)');
 ax = gca;
-ax.FontSize = 16;
+ax.FontSize = 18;
 
 %% FUNCTIONS
 function [DOP] = gpsStats(H, lat, lon)
@@ -191,6 +236,7 @@ function [DOP] = gpsStats(H, lat, lon)
     DOP.H = sqrt(sum(diag(HH(1:2,1:2))));
     DOP.V = sqrt(HH(3,3));
     DOP.T = sqrt(HH(4,4));
+    DOP.H = H;
 end
 
 function [C] = ENU_ECEF(lat, lon)
