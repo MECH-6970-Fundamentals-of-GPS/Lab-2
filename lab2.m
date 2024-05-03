@@ -18,6 +18,7 @@ data = load(filename).RCVR_S1;
 ephem = data.ephem;
 psrL1 = data.measurements.L1.psr;
 dopL1 = data.measurements.L1.doppler;
+psrVarL1 = data.measurements.L1.psr_variance;
 psrL2 = data.measurements.L2.psr;
 time = data.GPS_time.seconds;
 
@@ -42,10 +43,17 @@ for i = 2:length(time)
     [XuL1(:,i), HL1] = gnssPVT(Xs, XuL1(:,i-1), rhoL1', rho_dot');
     [XuIF(:,i), HIF] = gnssPVT(Xs, XuIF(:,i-1), rhoIF', rho_dot');
     uPosLLA = ecef2lla(XuL1(1:3,:)');
+
     DOP(i) = gpsStats(HL1, uPosLLA(1), uPosLLA(2));
+
+    P_psr = diag(psrVarL1(i,svPrns))';
+    P_pvt = inv(HL1'*inv(P_psr)*HL1);
+    p_error_hat(i) = sqrt(sum(diag(P_pvt(1:3,1:3))));
 end
 
 uPosLLA = ecef2lla(XuL1(1:3,:)');
+errorLLA = abs(uPosLLA - truthLLA);
+
 figure()
 geoplot(uPosLLA(:,1),uPosLLA(:,2),'*','LineWidth',3)
 hold on;
@@ -57,7 +65,6 @@ ax = gca;
 ax.FontSize = 18;
 
 ENU = Ctoomers*XuL1(1:3,:);
-errorENU = Ctruth*(XuL1(1:3,:));
 ENU_vel = Ctoomers*XuL1(5:7,:);
 pos_std = std(ENU,0,2);
 vel_std = std(ENU_vel,0,2);
@@ -67,10 +74,18 @@ fprintf('Position Accuracy(in ENU): [%0.3g %0.3g %0.3g]m\n', pos_std);
 fprintf('Velocity Accuracy(in ENU): [%0.3g %0.3g %0.3g]m\n', vel_std);
 
 figure();
-plot(time, vecnorm(errorENU), '-x', 'LineWidth',3);
+plot(time, p_error_hat,'-x','MarkerSize',10);
 xlabel('Time (s)');
-ylabel('Error Magnitude (m)');
-title('ENU Error Magnitude v. Time');
+ylabel('Position Error (m)');
+title('Position Error Estimate vs. Time');
+ax = gca;
+ax.FontSize = 18;
+
+figure();
+plot(time, vecnorm(errorLLA'),'-x','MarkerSize',10);
+xlabel('Time (s)');
+ylabel('Position Error (m)');
+title('Actual Position Error vs. Time');
 ax = gca;
 ax.FontSize = 18;
 
@@ -166,8 +181,8 @@ for i = 2:length(time)
     DOP(i) = gpsStats(HL1, uPosLLA(1), uPosLLA(2));
 
     P_psr = diag(psrVarL1(i,svPrns))';
-    P_pvt = HL1'*P_psr*HL1;
-    p_error(i) = sqrt(sum(diag(P_pvt(1:3,1:3))));
+    P_pvt = inv(HL1'*inv(P_psr)*HL1);
+    p_error_hat(i) = sqrt(sum(diag(P_pvt(1:3,1:3))));
 end
 
 uPosLLA = ecef2lla(XuL1(1:3,:)');
@@ -186,8 +201,18 @@ avg_velocity = mean(vecnorm(vel));
 
 fprintf('The average speed of the moving platform: %0.3g m/s\n', avg_velocity);
 
+p_error = abs(truthLLA - uPosLLA);
 figure();
-plot(time, p_error,'-x','MarkerSize',10);
+plot(time, vecnorm(p_error'),'-x', 'MarkerSize',10);
+xlabel('Time (s)');
+ylabel('Position Error (m)');
+title('True Position Error vs. Time');
+subtitle('As Compared to Provided Truth');
+ax = gca;
+ax.FontSize = 18;
+
+figure();
+plot(time, p_error_hat,'-x','MarkerSize',10);
 xlabel('Time (s)');
 ylabel('Position Error (m)');
 title('Position Error Estimate vs. Time');
